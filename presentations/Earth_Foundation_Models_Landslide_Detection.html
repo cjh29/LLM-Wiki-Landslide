@@ -1,0 +1,1284 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>地球觀測基礎模型 (Earth Foundation Models) 於遙測崩塌地偵測之發展與前沿</title>
+  <style>
+    :root {
+      --bg-dark: #090d16;
+      --bg-card: rgba(18, 24, 38, 0.85);
+      --bg-card-hover: rgba(26, 36, 56, 0.95);
+      --border-color: rgba(64, 93, 138, 0.35);
+      --border-glow: rgba(56, 189, 248, 0.5);
+      --text-main: #f1f5f9;
+      --text-muted: #94a3b8;
+      --accent-cyan: #38bdf8;
+      --accent-emerald: #34d399;
+      --accent-amber: #fbbf24;
+      --accent-rose: #f43f5e;
+      --accent-purple: #c084fc;
+      --font-main: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang TC", "Microsoft JhengHei", sans-serif;
+      --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+    }
+
+    body {
+      background-color: var(--bg-dark);
+      color: var(--text-main);
+      font-family: var(--font-main);
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+      user-select: none;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* Background Ambient Gradients */
+    .ambient-bg {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      pointer-events: none;
+      z-index: 0;
+      background: 
+        radial-gradient(circle at 10% 20%, rgba(56, 189, 248, 0.12) 0%, transparent 40%),
+        radial-gradient(circle at 85% 80%, rgba(52, 211, 153, 0.1) 0%, transparent 40%),
+        radial-gradient(circle at 50% 50%, rgba(192, 132, 252, 0.05) 0%, transparent 60%);
+    }
+
+    /* Top Navigation & Progress */
+    .top-bar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 52px;
+      padding: 0 24px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      border-bottom: 1px solid var(--border-color);
+      background: rgba(9, 13, 22, 0.85);
+      backdrop-filter: blur(12px);
+      z-index: 100;
+    }
+
+    .progress-bar-container {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 3px;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .progress-bar {
+      height: 100%;
+      width: 10%;
+      background: linear-gradient(90deg, var(--accent-cyan), var(--accent-emerald));
+      transition: width 0.35s ease;
+      box-shadow: 0 0 10px var(--accent-cyan);
+    }
+
+    .brand-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-muted);
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .brand-title .badge {
+      background: rgba(56, 189, 248, 0.15);
+      color: var(--accent-cyan);
+      padding: 2px 8px;
+      border-radius: 999px;
+      font-size: 11px;
+      border: 1px solid rgba(56, 189, 248, 0.3);
+    }
+
+    .controls {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .slide-counter {
+      font-family: var(--font-mono);
+      font-size: 13px;
+      color: var(--text-muted);
+      min-width: 65px;
+      text-align: center;
+    }
+
+    .btn-icon {
+      background: rgba(255, 255, 255, 0.06);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 13px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+
+    .btn-icon:hover {
+      background: rgba(255, 255, 255, 0.12);
+      border-color: var(--accent-cyan);
+      color: var(--accent-cyan);
+    }
+
+    /* Presentation Viewport */
+    .presentation-container {
+      position: relative;
+      width: 100vw;
+      height: calc(100vh - 52px);
+      margin-top: 52px;
+      overflow: hidden;
+      z-index: 1;
+    }
+
+    .slide {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      padding: 32px 56px;
+      display: flex;
+      flex-direction: column;
+      opacity: 0;
+      visibility: hidden;
+      transform: scale(0.98) translateY(12px);
+      transition: opacity 0.4s cubic-bezier(0.16, 1, 0.3, 1), transform 0.4s cubic-bezier(0.16, 1, 0.3, 1), visibility 0.4s;
+      overflow-y: auto;
+    }
+
+    .slide.active {
+      opacity: 1;
+      visibility: visible;
+      transform: scale(1) translateY(0);
+    }
+
+    /* Slide Typography */
+    .slide-header {
+      margin-bottom: 24px;
+    }
+
+    .slide-tag {
+      display: inline-block;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 1.5px;
+      color: var(--accent-cyan);
+      margin-bottom: 6px;
+    }
+
+    .slide-title {
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: -0.5px;
+      background: linear-gradient(135deg, #ffffff 30%, #94a3b8 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 6px;
+    }
+
+    .slide-subtitle {
+      font-size: 15px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+
+    /* Slide Layouts & Cards */
+    .grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 24px;
+      flex: 1;
+    }
+
+    .grid-3 {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 20px;
+      flex: 1;
+    }
+
+    .grid-4 {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 16px;
+      flex: 1;
+    }
+
+    .card {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 12px;
+      padding: 22px;
+      display: flex;
+      flex-direction: column;
+      backdrop-filter: blur(8px);
+      transition: all 0.25s ease;
+      position: relative;
+      overflow: hidden;
+    }
+
+    .card:hover {
+      background: var(--bg-card-hover);
+      border-color: var(--accent-cyan);
+      transform: translateY(-2px);
+      box-shadow: 0 8px 24px -6px rgba(0, 0, 0, 0.4);
+    }
+
+    .card-glow-emerald:hover { border-color: var(--accent-emerald); }
+    .card-glow-amber:hover { border-color: var(--accent-amber); }
+    .card-glow-purple:hover { border-color: var(--accent-purple); }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+
+    .card-title {
+      font-size: 17px;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    .pill {
+      font-size: 11px;
+      font-weight: 600;
+      padding: 3px 8px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, 0.08);
+      color: var(--text-muted);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+    }
+
+    .pill-cyan { background: rgba(56, 189, 248, 0.15); color: var(--accent-cyan); border-color: rgba(56, 189, 248, 0.3); }
+    .pill-emerald { background: rgba(52, 211, 153, 0.15); color: var(--accent-emerald); border-color: rgba(52, 211, 153, 0.3); }
+    .pill-amber { background: rgba(251, 191, 36, 0.15); color: var(--accent-amber); border-color: rgba(251, 191, 36, 0.3); }
+    .pill-rose { background: rgba(244, 63, 94, 0.15); color: var(--accent-rose); border-color: rgba(244, 63, 94, 0.3); }
+    .pill-purple { background: rgba(192, 132, 252, 0.15); color: var(--accent-purple); border-color: rgba(192, 132, 252, 0.3); }
+
+    .card-content {
+      font-size: 14px;
+      color: #cbd5e1;
+      line-height: 1.6;
+      flex: 1;
+    }
+
+    .card-content ul {
+      padding-left: 18px;
+      margin: 8px 0;
+    }
+
+    .card-content li {
+      margin-bottom: 6px;
+    }
+
+    .highlight-stat {
+      font-family: var(--font-mono);
+      font-size: 26px;
+      font-weight: 700;
+      color: var(--accent-cyan);
+      margin: 8px 0;
+      display: flex;
+      align-items: baseline;
+      gap: 6px;
+    }
+
+    .highlight-stat span {
+      font-size: 13px;
+      color: var(--text-muted);
+      font-weight: normal;
+    }
+
+    /* Tables */
+    .table-container {
+      width: 100%;
+      border-radius: 8px;
+      border: 1px solid var(--border-color);
+      overflow-x: auto;
+      background: rgba(15, 23, 42, 0.6);
+      margin: 12px 0;
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 13px;
+      text-align: left;
+    }
+
+    th {
+      background: rgba(30, 41, 59, 0.8);
+      color: #e2e8f0;
+      padding: 10px 14px;
+      font-weight: 600;
+      border-bottom: 1px solid var(--border-color);
+      white-space: nowrap;
+    }
+
+    td {
+      padding: 9px 14px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+      color: #cbd5e1;
+      white-space: nowrap;
+    }
+
+    tr:last-child td {
+      border-bottom: none;
+    }
+
+    tr:hover td {
+      background: rgba(255, 255, 255, 0.03);
+    }
+
+    .val-sota {
+      font-weight: 700;
+      color: var(--accent-emerald);
+      background: rgba(52, 211, 153, 0.1);
+      padding: 2px 6px;
+      border-radius: 4px;
+    }
+
+    .val-drop {
+      color: var(--accent-rose);
+    }
+
+    /* Bottom Floating Action Bar */
+    .bottom-nav {
+      position: fixed;
+      bottom: 20px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(18, 24, 38, 0.9);
+      border: 1px solid var(--border-color);
+      backdrop-filter: blur(16px);
+      padding: 8px 16px;
+      border-radius: 999px;
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.5);
+      z-index: 100;
+    }
+
+    .nav-arrow {
+      background: transparent;
+      border: none;
+      color: var(--text-main);
+      width: 32px;
+      height: 32px;
+      border-radius: 50%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 16px;
+      transition: background 0.2s, color 0.2s;
+    }
+
+    .nav-arrow:hover {
+      background: rgba(255, 255, 255, 0.1);
+      color: var(--accent-cyan);
+    }
+
+    /* Overview Grid Modal */
+    .overview-modal {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100vw;
+      height: 100vh;
+      background: rgba(9, 13, 22, 0.95);
+      backdrop-filter: blur(16px);
+      z-index: 200;
+      display: none;
+      flex-direction: column;
+      padding: 40px;
+      overflow-y: auto;
+    }
+
+    .overview-modal.show {
+      display: flex;
+    }
+
+    .overview-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+      gap: 20px;
+      margin-top: 24px;
+    }
+
+    .overview-thumb {
+      background: var(--bg-card);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 16px;
+      cursor: pointer;
+      transition: all 0.2s;
+      display: flex;
+      flex-direction: column;
+      height: 140px;
+      justify-content: space-between;
+    }
+
+    .overview-thumb:hover, .overview-thumb.active {
+      border-color: var(--accent-cyan);
+      transform: translateY(-3px);
+      box-shadow: 0 4px 16px rgba(56, 189, 248, 0.3);
+    }
+
+    .overview-thumb .thumb-num {
+      font-family: var(--font-mono);
+      font-size: 12px;
+      color: var(--accent-cyan);
+    }
+
+    .overview-thumb .thumb-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: #fff;
+    }
+
+    /* Flow Steps */
+    .flow-chain {
+      display: flex;
+      align-items: stretch;
+      gap: 12px;
+      margin: 16px 0;
+    }
+
+    .flow-node {
+      flex: 1;
+      background: rgba(18, 24, 38, 0.6);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 14px;
+      position: relative;
+    }
+
+    .flow-node::after {
+      content: "➔";
+      position: absolute;
+      right: -12px;
+      top: 50%;
+      transform: translateY(-50%);
+      color: var(--accent-cyan);
+      font-size: 14px;
+      z-index: 10;
+    }
+
+    .flow-node:last-child::after {
+      display: none;
+    }
+
+    .callout {
+      padding: 12px 16px;
+      border-radius: 8px;
+      background: rgba(56, 189, 248, 0.08);
+      border-left: 3px solid var(--accent-cyan);
+      font-size: 13px;
+      line-height: 1.5;
+      margin: 10px 0;
+    }
+    .callout-amber {
+      background: rgba(251, 191, 36, 0.08);
+      border-left-color: var(--accent-amber);
+    }
+    .callout-rose {
+      background: rgba(244, 63, 94, 0.08);
+      border-left-color: var(--accent-rose);
+    }
+
+    /* Title Slide Specifics */
+    .title-slide {
+      justify-content: center;
+      align-items: center;
+      text-align: center;
+      padding: 0 10%;
+    }
+
+    .title-slide h1 {
+      font-size: 44px;
+      font-weight: 800;
+      line-height: 1.25;
+      background: linear-gradient(135deg, #ffffff 10%, #38bdf8 60%, #34d399 100%);
+      -webkit-background-clip: text;
+      -webkit-text-fill-color: transparent;
+      margin-bottom: 18px;
+    }
+
+    .title-slide p.subtitle {
+      font-size: 20px;
+      color: #94a3b8;
+      max-width: 800px;
+      margin-bottom: 32px;
+      line-height: 1.5;
+    }
+
+    .title-meta {
+      display: flex;
+      gap: 20px;
+      justify-content: center;
+      font-size: 14px;
+      color: var(--text-muted);
+      border-top: 1px solid var(--border-color);
+      padding-top: 24px;
+      width: 100%;
+      max-width: 600px;
+    }
+
+    kbd {
+      background: rgba(255, 255, 255, 0.1);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 4px;
+      padding: 2px 6px;
+      font-family: var(--font-mono);
+      font-size: 11px;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="ambient-bg"></div>
+
+  <!-- Top Bar -->
+  <header class="top-bar">
+    <div class="progress-bar-container">
+      <div class="progress-bar" id="progressBar"></div>
+    </div>
+    <div class="brand-title">
+      <span>Earth Observation Foundation Models</span>
+      <span class="badge">LLM Wiki Synthesis</span>
+    </div>
+    <div class="controls">
+      <span class="slide-counter" id="slideCounter">1 / 10</span>
+      <button class="btn-icon" onclick="toggleOverview()" title="投影片總覽 (鍵盤 O)">
+        <span>總覽 [O]</span>
+      </button>
+      <button class="btn-icon" onclick="toggleFullscreen()" title="全螢幕切換 (鍵盤 F)">
+        <span>全螢幕 [F]</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Presentation Main Container -->
+  <main class="presentation-container" id="presentation">
+
+    <!-- Slide 1: Title Slide -->
+    <section class="slide title-slide active" data-index="1">
+      <span class="slide-tag">學術文獻回顧與架構綜合評析</span>
+      <h1>地球觀測基礎模型 (Earth Foundation Models)<br>於遙測崩塌地偵測之發展與前沿</h1>
+      <p class="subtitle">從傳統任務專屬 CNN、通用視覺大模型遷移、原生多光譜 GeoFM 到視覺語言 (VLM) 推理的全景演進</p>
+      <div class="title-meta">
+        <div><strong>核心資料庫</strong>：LLM Wiki (5 篇精選先驅文獻)</div>
+        <div><strong>關鍵模型</strong>：Prithvi-EO-2.0, Clay v1.5, SAM, LandslideFM</div>
+        <div><strong>應用基準</strong>：Landslide4Sense, Bijie, LandslideVL</div>
+      </div>
+      <div style="margin-top: 36px; font-size: 13px; color: #64748b;">
+        提示：按鍵盤 <kbd>→</kbd> / <kbd>Space</kbd> 下一頁，<kbd>←</kbd> 上一頁，<kbd>O</kbd> 開啟投影片總覽
+      </div>
+    </section>
+
+    <!-- Slide 2: Background & Domain Challenges -->
+    <section class="slide" data-index="2">
+      <div class="slide-header">
+        <span class="slide-tag">研究動機與領域瓶頸</span>
+        <h2 class="slide-title">為什麼崩塌地偵測需要基礎模型 (GeoFM)？</h2>
+        <p class="slide-subtitle">極端類別不平衡、時空泛化崩塌與光譜混淆，使傳統深度學習在災害應變中陷入困境</p>
+      </div>
+      <div class="grid-3">
+        <div class="card card-glow-amber">
+          <div class="card-header">
+            <span class="card-title">1. 極端不平衡 (Class Imbalance)</span>
+            <span class="pill pill-amber">2.2% 正樣本</span>
+          </div>
+          <div class="card-content">
+            <p>在代表性基準（如 Landslide4Sense）中，崩塌像素僅佔整幅衛星影像約 <strong>2%</strong>。</p>
+            <ul>
+              <li>傳統損失函數易受 98% 的背景主導。</li>
+              <li>模型常透過無腦提高 Recall 彌補損失，導致<strong>嚴重過度分割 (Over-segmentation)</strong>。</li>
+              <li>準確率指標 (mAcc) 嚴重失真（全猜背景亦有 98% 準確）。</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card card-glow-rose">
+          <div class="card-header">
+            <span class="card-title">2. 光譜混淆與假警報</span>
+            <span class="pill pill-rose">高誤報率</span>
+          </div>
+          <div class="card-content">
+            <p>裸露的滑坡面在光學上與<strong>農田耕作翻土、平原河床沈積物、工區整地</strong>具有極高光譜相似性。</p>
+            <ul>
+              <li>純 RGB 光學影像極難辨識細微差異。</li>
+              <li>高度仰賴紅邊（Red-edge）、短波紅外（SWIR）與數值高程（DEM/坡度）幾何約束。</li>
+              <li>缺乏環境先驗時，平地假警報頻繁發生。</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card card-glow-purple">
+          <div class="card-header">
+            <span class="card-title">3. 跨區泛化衰退 (Weak Replicability)</span>
+            <span class="pill pill-purple">空間異質性</span>
+          </div>
+          <div class="card-content">
+            <p>不同山區的地質母岩、植被覆蓋率、降雨與地震引發機制截然不同。</p>
+            <ul>
+              <li>傳統 CNN 在原訓練集有效，部署至未見區域時 mIoU 崩跌至 48%~53%。</li>
+              <li>災害爆發當下缺乏該區域之即時標註，傳統模型無法快速自適應。</li>
+              <li>急需具備<strong>強少樣本遷移能力 (Few-shot)</strong> 的通用模型。</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+      <div class="callout" style="margin-top: 20px;">
+        💡 <strong>破局之道</strong>：利用海量無標籤衛星影像進行自監督預訓練的「地球觀測基礎模型 (GeoFM)」，能學習到地表豐富的物理時空表徵，成為打破災害脆弱性循環的關鍵鑰匙。
+      </div>
+    </section>
+
+    <!-- Slide 3: Four Paradigms Evolution -->
+    <section class="slide" data-index="3">
+      <div class="slide-header">
+        <span class="slide-tag">技術演進脈絡</span>
+        <h2 class="slide-title">崩塌地 AI 偵測技術之四部曲演進範式</h2>
+        <p class="slide-subtitle">從專用卷積神經網路、視覺大模型遷移、地球原生大模型到視覺語言多模態推理</p>
+      </div>
+      <div class="grid-4">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">第一代：任務專用 CNN</span>
+            <span class="pill">2018–2023</span>
+          </div>
+          <div class="card-content">
+            <p><strong>代表</strong>：U-Net, U-Net++, DeepLabv3+</p>
+            <ul>
+              <li>從 scratch 或 ImageNet 微調。</li>
+              <li>局部卷積特徵提取，空間邊界清晰。</li>
+              <li><strong>局限</strong>：缺乏全域上下文，對標註數據飢渴，面對 10% 以下標籤時性能急遽崩塌。</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card card-glow-cyan">
+          <div class="card-header">
+            <span class="card-title">第二代：通用 VFM 遷移</span>
+            <span class="pill pill-cyan">2023–2024</span>
+          </div>
+          <div class="card-content">
+            <p><strong>代表</strong>：TransLandSeg (SAM + ATL)</p>
+            <ul>
+              <li>遷移 Meta SA-1B 大模型權重。</li>
+              <li>僅微調 1.3% 參數，高解析度 RGB 輪廓極強。</li>
+              <li><strong>局限</strong>：光譜盲區（RGB-only），無多光譜與高程感知，隨機切分引發空間洩漏爭鳴。</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card card-glow-emerald">
+          <div class="card-header">
+            <span class="card-title">第三代：原生 GeoFM</span>
+            <span class="pill pill-emerald">2024–2026</span>
+          </div>
+          <div class="card-content">
+            <p><strong>代表</strong>：Prithvi-EO-2.0, Clay</p>
+            <ul>
+              <li>衛星多光譜時空序列 MAE 預訓練。</li>
+              <li>時空經緯度嵌入，抗極端少樣本。</li>
+              <li><strong>突破</strong>：14 波段全融合達 73.6% mIoU，或與 U-Net 混合提供瓶頸語意先驗。</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card card-glow-purple">
+          <div class="card-header">
+            <span class="card-title">第四代：多模態 VLM 推理</span>
+            <span class="pill pill-purple">2026+ 前沿</span>
+          </div>
+          <div class="card-content">
+            <p><strong>代表</strong>：LandslideFM + LandslideVL</p>
+            <ul>
+              <li>SAGT 半監督階梯信任（1/8 標籤超越全監督）。</li>
+              <li>多任務統一骨幹（分類/檢測/分割）。</li>
+              <li><strong>躍遷</strong>：級聯 LoRA-VLM，輸出災害鏈推理與道路民宅防災決策報告。</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 4: VFM vs GeoFM & Spatial Leakage -->
+    <section class="slide" data-index="4">
+      <div class="slide-header">
+        <span class="slide-tag">路線辯證與學術爭鳴</span>
+        <h2 class="slide-title">自然影像大模型 (VFM) vs 原生遙測大模型 (GeoFM)</h2>
+        <p class="slide-subtitle">TransLandSeg (SAM) 的光譜盲區與遙測切片「空間資料洩漏 (Spatial Leakage)」深度剖析</p>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">自然影像大模型 (SAM) 的光譜貧瘠</span>
+            <span class="pill pill-rose">RGB-Only 致命傷</span>
+          </div>
+          <div class="card-content">
+            <p>TransLandSeg (Hou et al., 2024) 透過自適應遷移學習 (ATL) 微調 SAM 1.3% 參數：</p>
+            <ul>
+              <li><strong>0.8m 畢節超高解析度</strong>：幾何紋理豐富，F1 達 <strong>93.41%</strong>，大放異彩。</li>
+              <li><strong>10m Sentinel-2 中解析度</strong>：受限於只能吃 RGB，無法讀取 Red-edge、SWIR 與 DEM，無法利用地質物理線索排除平原農田裸土。</li>
+              <li><strong>官方重測結果</strong>：在官方 Landslide4Sense 測試集實測僅 <strong>55.39% F1</strong>，顯著落後於 GeoFM（64.5%~65.4%）。</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card card-glow-amber">
+          <div class="card-header">
+            <span class="card-title">重大文獻爭鳴：空間自相關與資料洩漏</span>
+            <span class="pill pill-amber">29% 虛高落差</span>
+          </div>
+          <div class="card-content">
+            <p>為什麼 TransLandSeg 原文宣稱在 L4S 取得 84.46% F1，而 Li et al. (2025) 實測僅 55.39%？</p>
+            <div class="callout callout-rose">
+              ⚠️ <strong>隨機切割 (Random Split) 的致命陷阱</strong>：<br>
+              地表遙測影像具備強烈「空間自相關性」。隨機 70/30 切割導致相鄰切片同時存在於訓練與測試集，模型在測試時實際上「看過」周遭滑坡，引發嚴重空間洩漏！
+            </div>
+            <p><strong>學術規範</strong>：文獻回顧必須強調，遙測評估必須採取<strong>「留出地點 (Leave-out-location)」</strong>的嚴格地理隔離劃分，方能代表真實泛化能力。
+            </p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 5: Prithvi-EO-2.0 Deep Dive -->
+    <section class="slide" data-index="5">
+      <div class="slide-header">
+        <span class="slide-tag">原生大模型主骨幹</span>
+        <h2 class="slide-title">Prithvi-EO-2.0：時空嵌入與波段適應性</h2>
+        <p class="slide-subtitle">NASA/IBM 10 年 420 萬 HLS 切片預訓練，突破極限少樣本與多通道融合極限</p>
+      </div>
+      <div class="grid-2">
+        <div class="card card-glow-cyan">
+          <div class="card-header">
+            <span class="card-title">預訓練創新與架構特點</span>
+            <span class="pill pill-cyan">300M / 600M ViT</span>
+          </div>
+          <div class="card-content">
+            <ul>
+              <li><strong>全球代表性分層採樣</strong>：覆蓋全球 712 個生態區，升採樣城鎮建築區與高熵地貌，抑制海洋與沙漠。</li>
+              <li><strong>3D 時空 MAE</strong>：輸入 $4 \times 224 \times 224$ 時空立方體，捕捉季節物候變化。</li>
+              <li><strong>時空元資料偏差嵌入 (Location & Date)</strong>：將經緯度與採樣年份/日（DOY）以 2D sin/cos 編碼加權注入 Token，並隨機 10% Dropout 確保無元資料時之泛化性。</li>
+              <li><strong>開源工具鏈</strong>：正式 onboard 於 <strong>TerraTorch</strong>，推動可復現的開放科學。</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card card-glow-emerald">
+          <div class="card-header">
+            <span class="card-title">Landslide4Sense 實證亮點</span>
+            <span class="pill pill-emerald">全融合 SOTA</span>
+          </div>
+          <div class="card-content">
+            <div class="highlight-stat">73.62% <span>mIoU (14B 全波段融合)</span></div>
+            <p>搭配非線性 <strong>U-Net Adapter</strong> 將 14 通道對齊回 6 通道輸入，全參數微調創下全場最高 F1 65.42%。</p>
+            <ul>
+              <li><strong>對比傳統 U-Net</strong>：U-Net 直接吃 14 通道時因過擬合暴跌至 61.20% mIoU。</li>
+              <li><strong>波段物理語意</strong>：基於互資訊（MI）篩選的 6 波段逼近 14 通道表現；但若隨機打亂波段順序，F1 斷崖式跌至 39.17%，證實模型強烈依賴光譜物理對齊。</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 6: Clay-CNN Hybrid & Architecture Debate -->
+    <section class="slide" data-index="6">
+      <div class="slide-header">
+        <span class="slide-tag">架構哲學爭鳴</span>
+        <h2 class="slide-title">GFM 應該作為主編碼器，還是輔助瓶頸先驗？</h2>
+        <p class="slide-subtitle">Harvard 研究 (Vu, 2026) 揭示純 ViT 跳躍連接缺失缺陷，提出 Hybrid U-Net + Clay</p>
+      </div>
+      <div class="grid-3">
+        <div class="card card-glow-rose">
+          <div class="card-header">
+            <span class="card-title">純 ViT 主骨幹之硬傷</span>
+            <span class="pill pill-rose">缺少 Skip Connections</span>
+          </div>
+          <div class="card-content">
+            <p>Clay v1.5（7,000 萬切片預訓練）單獨微調時 F1 僅 <strong>55.2%</strong>，落後純 U-Net（59.9%）。</p>
+            <p><strong>核心原因</strong>：純 ViT 輸出單一 $16 \times 16$ 粗糙尺度，缺乏 CNN 多尺度層層跳躍連接，像素級精細邊界重構困難。</p>
+          </div>
+        </div>
+
+        <div class="card card-glow-emerald">
+          <div class="card-header">
+            <span class="card-title">Hybrid U-Net + Clay</span>
+            <span class="pill pill-emerald">F1: 64.5 ± 1.8%</span>
+          </div>
+          <div class="card-content">
+            <p><strong>CNN-GFM 混合範式</strong>：</p>
+            <ul>
+              <li><strong>U-Net</strong>：負責處理 14 通道，保留全部 4 階層 Skip Connections 確保幾何精度。</li>
+              <li><strong>Clay</strong>：處理 12 光學波段，將語意注入 U-Net 瓶頸層（$8 \times 8$）。</li>
+              <li>以一半參數量超越獨立 Prithvi-600M。</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card card-glow-cyan">
+          <div class="card-header">
+            <span class="card-title">Grad-CAM 與兩階段微調</span>
+            <span class="pill pill-cyan">可解釋性發現</span>
+          </div>
+          <div class="card-content">
+            <ul>
+              <li><strong>兩階段訓練防護</strong>：Stage 1 凍結 GFM 穩定 Decoder，Stage 2 插入 LoRA。徹底防止隨機解碼器噪聲梯度摧毀預訓練權重（F1 由 30.2% 救回至 64.5%）。</li>
+              <li><strong>Grad-CAM 機制</strong>：Clay 主要在<strong>疤痕外部</strong>提供抑制訊號，消除平原農田假警報，將 Precision 由 52.5% 拉升至 62.2%！</li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 7: Few-shot & Semi-supervised Breakthrough -->
+    <section class="slide" data-index="7">
+      <div class="slide-header">
+        <span class="slide-tag">少樣本與弱監督突破</span>
+        <h2 class="slide-title">突破標籤飢渴：少樣本韌性與 SAGT 半監督階梯信任</h2>
+        <p class="slide-subtitle">在 1.25% 極限標記與 1/8 弱監督情境下，基礎模型展現對傳統監督模型的碾壓優勢</p>
+      </div>
+      <div class="grid-2">
+        <div class="card card-glow-cyan">
+          <div class="card-header">
+            <span class="card-title">Prithvi 極限少樣本保留率</span>
+            <span class="pill pill-cyan">1.25% 標註 (約 50 樣本)</span>
+          </div>
+          <div class="card-content">
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>模型</th>
+                    <th>100% 數據</th>
+                    <th>2.5% (100幅)</th>
+                    <th>1.25% (50幅)</th>
+                    <th>特性</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td><strong>Prithvi-600M</strong></td>
+                    <td>70.41%</td>
+                    <td class="val-sota">67.10% (-3.3pp)</td>
+                    <td class="val-sota">66.96% (DE 0.97)</td>
+                    <td>保留 95.1% 全實力</td>
+                  </tr>
+                  <tr>
+                    <td>Prithvi-300M</td>
+                    <td>71.30%</td>
+                    <td>66.60%</td>
+                    <td>64.45%</td>
+                    <td>Precision 保持最高</td>
+                  </tr>
+                  <tr>
+                    <td>U-Net (Baseline)</td>
+                    <td>70.44%</td>
+                    <td class="val-drop">65.10% (-5.3pp)</td>
+                    <td class="val-drop">59.70%</td>
+                    <td>落後 GFM 達 7.2 pp</td>
+                  </tr>
+                  <tr>
+                    <td>U-Net++</td>
+                    <td>68.96%</td>
+                    <td class="val-drop">65.50%</td>
+                    <td class="val-drop">55.50%</td>
+                    <td>落後 GFM 達 11.5 pp</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p style="font-size: 13px; color: #94a3b8;">* 實證證實：600M 大模型在全樣本下精度與 300M 相當，但在極端少樣本下憑藉龐大預訓練先驗展現最強抗衰減能力。</p>
+          </div>
+        </div>
+
+        <div class="card card-glow-emerald">
+          <div class="card-header">
+            <span class="card-title">LandslideFM SAGT 階梯信任半監督</span>
+            <span class="pill pill-emerald">1/8 標註即超 SOTA</span>
+          </div>
+          <div class="card-content">
+            <p>傳統半監督直接丟棄 SAM 與教師模型意見相左的區域，導致丟失難樣本。SAGT 提出<strong>階梯信任機制</strong>：</p>
+            <div class="flow-chain" style="margin: 10px 0;">
+              <div class="flow-node"><strong>一致</strong><br>α=1.0</div>
+              <div class="flow-node"><strong>衝突</strong><br>β=0.3</div>
+              <div class="flow-node"><strong>SAM獨信</strong><br>γ=0.7</div>
+              <div class="flow-node"><strong>教師獨信</strong><br>δ=0.5</div>
+            </div>
+            <p><strong>實證成果</strong>：在畢節資料集上，<strong>僅用 1/8 標註數據的 LandslideFM（mIoU 80.47%）便已全面超越使用 100% 數據的監督模型</strong>！</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 8: LandslideFM & VLM Reasoning -->
+    <section class="slide" data-index="8">
+      <div class="slide-header">
+        <span class="slide-tag">邁向多模態視覺語言推理</span>
+        <h2 class="slide-title">LandslideFM：從二元遮罩進化至次生災害鏈推理</h2>
+        <p class="slide-subtitle">首創圖文基準 LandslideVL 與級聯 LoRA-VLM，為防災指揮官提供可執行的決策支援</p>
+      </div>
+      <div class="grid-2">
+        <div class="card card-glow-purple">
+          <div class="card-header">
+            <span class="card-title">級聯式視覺語言推理架構</span>
+            <span class="pill pill-purple">Unified VLM Pipeline</span>
+          </div>
+          <div class="card-content">
+            <div class="flow-chain">
+              <div class="flow-node">1. SAGT 骨幹高精度分割滑坡</div>
+              <div class="flow-node">2. 原圖疊加預測遮罩生成視覺 Tokens</div>
+              <div class="flow-node">3. LoRA 微調 VLM 進行圖文對齊推理</div>
+            </div>
+            <p><strong>解答核心問題</strong>：</p>
+            <ul>
+              <li>周遭是否有道路阻斷形成交通孤島？</li>
+              <li>是否有臨近民宅聚集區需緊急撤離？</li>
+              <li><strong>「滑坡入水」</strong>是否引發湧浪、堰塞湖與下游土石流次生災害鏈？</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="card card-glow-cyan">
+          <div class="card-header">
+            <span class="card-title">LandslideVL 基準測試表現</span>
+            <span class="pill pill-cyan">4,660 幅全人工校準切片</span>
+          </div>
+          <div class="card-content">
+            <div class="table-container">
+              <table>
+                <thead>
+                  <tr>
+                    <th>模型</th>
+                    <th>屬性召回率 mRecall</th>
+                    <th>屬性 F1</th>
+                    <th>詳細報告 BLEU</th>
+                    <th>ROUGE-L F1</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr>
+                    <td>Qwen2.5-VL-7B</td>
+                    <td>59.28%</td>
+                    <td>66.96%</td>
+                    <td>0.24%</td>
+                    <td>7.44%</td>
+                  </tr>
+                  <tr>
+                    <td>Qwen3-VL-8B</td>
+                    <td>67.12%</td>
+                    <td>74.96%</td>
+                    <td>0.57%</td>
+                    <td>8.63%</td>
+                  </tr>
+                  <tr>
+                    <td>Kimi-VL-A3B</td>
+                    <td>65.63%</td>
+                    <td>68.71%</td>
+                    <td>0.17%</td>
+                    <td>7.27%</td>
+                  </tr>
+                  <tr>
+                    <td><strong>LandslideFM</strong></td>
+                    <td class="val-sota">94.43% (+27pp)</td>
+                    <td class="val-sota">93.82%</td>
+                    <td class="val-sota">13.16% (23x)</td>
+                    <td class="val-sota">32.50%</td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <p style="font-size: 13px; color: #94a3b8;">* 通用大模型嚴重缺乏地質專業先驗，漏檢率高達 30%~40%；專門微調的 LandslideFM 實現精確環境識別與專業防災報告撰寫。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 9: Critical Research Gaps -->
+    <section class="slide" data-index="9">
+      <div class="slide-header">
+        <span class="slide-tag">文獻回顧核心論據</span>
+        <h2 class="slide-title">現存關鍵研究缺口與技術挑戰 (Research Gaps)</h2>
+        <p class="slide-subtitle">為碩士研究論文的問題定義 (Problem Formulation) 與研究動機提供有力支撐</p>
+      </div>
+      <div class="grid-2">
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">1. 地質型態制約遠甚於地理距離</span>
+            <span class="pill pill-rose">地貌泛化盲區</span>
+          </div>
+          <div class="card-content">
+            <p>Li et al. (2025) 發現，愛爾蘭特殊的<strong>泥炭地崩塌 (Peat Landslides)</strong> 辨識極度低落，甚至拉低了同源測試集整體表現；反而在未曾見過的地震崩塌區 mIoU 達 86%。</p>
+            <p><strong>結論</strong>：崩塌地的地質物質構造與形態學差異，對模型的考驗遠大於純粹的地理跨度。</p>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">2. 極端不平衡下的門檻漂移現象</span>
+            <span class="pill pill-amber">後處理校準必需</span>
+          </div>
+          <div class="card-content">
+            <p>在崩塌像素僅佔 2% 時，後驗機率分佈極度偏斜。ROC-AUC 高達 0.989，但<strong>最佳決策門檻大幅漂移至 $t = 0.78 \sim 0.80$</strong>。</p>
+            <p>若維持預設 0.50 評估，Precision 暴跌至 40%，F1 崩跌近 10 pp。文獻指出門檻校準是實務應變的生死線。</p>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">3. 數據增強與地貌物理連續性衝突</span>
+            <span class="pill pill-cyan">增強策略禁忌</span>
+          </div>
+          <div class="card-content">
+            <p>CV 常用的 <strong>CutMix / Cutout</strong> 會人為切斷滑坡冠部到堆積體的連續地貌與周遭斜坡脈絡，實驗證明會顯著損害模型表徵。</p>
+            <p>崩塌遙測增強必須維持空間連續性，嚴禁任意局部遮蔽拼貼。</p>
+          </div>
+        </div>
+
+        <div class="card">
+          <div class="card-header">
+            <span class="card-title">4. 公開資料集缺乏 AI-Ready 時空元資料</span>
+            <span class="pill pill-purple">大模型能力閹割</span>
+          </div>
+          <div class="card-content">
+            <p>Prithvi 與 Clay 原生具備時間戳記與經緯度嵌入，但主流資料集（L4S、Bijie）多匿名切割成小切片，導致時空先驗無法發揮。</p>
+            <p>且 $128 \times 128$ 切片（僅涵蓋 $1.28 \times 1.28\text{ km}$）限制了宏觀地形視野，零星微小崩塌極易漏檢。</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Slide 10: Conclusion & Roadmap -->
+    <section class="slide" data-index="10">
+      <div class="slide-header">
+        <span class="slide-tag">總結與研究展望</span>
+        <h2 class="slide-title">結論：地球基礎模型於崩塌偵測之核心 Takeaways</h2>
+        <p class="slide-subtitle">面向未來：多模態時空對齊、邊緣輕量化與端到端智慧防災助理</p>
+      </div>
+      <div class="grid-3">
+        <div class="card card-glow-emerald">
+          <div class="card-header">
+            <span class="card-title">1. 特徵複用與少樣本革命</span>
+            <span class="pill pill-emerald">Data-efficient</span>
+          </div>
+          <div class="card-content">
+            <p>原生 GeoFM 的核心價值在於解決災害應變的<strong>「數據飢渴與標籤稀缺」</strong>。</p>
+            <p>Prithvi 600M 在 50 個樣本下維持 67% mIoU，SAGT 半監督以 1/8 標註超越全監督，大幅降低第一線標註門檻。</p>
+          </div>
+        </div>
+
+        <div class="card card-glow-cyan">
+          <div class="card-header">
+            <span class="card-title">2. GFM 宜互補而非單純取代</span>
+            <span class="pill pill-cyan">Hybrid SOTA</span>
+          </div>
+          <div class="card-content">
+            <p>純 ViT 缺少 Skip Connections，像素分割邊界受限。</p>
+            <p><strong>最佳落地範式</strong>：以 CNN 供應多尺度空間幾何精度，以 GFM 在瓶頸層供應全域光譜與地貌先驗（壓制農田假警報），兩者混合性價比最高。</p>
+          </div>
+        </div>
+
+        <div class="card card-glow-purple">
+          <div class="card-header">
+            <span class="card-title">3. 從「二元標記」到「決策大腦」</span>
+            <span class="pill pill-purple">Reasoning Agent</span>
+          </div>
+          <div class="card-content">
+            <p>LandslideFM 樹立了新典範：模型不能只畫出邊界，還必須理解周遭環境、研判道路建築威脅與推演次生災害鏈。</p>
+            <p>未來將進一步整合 InSAR 形變時序與氣象雷達，打造真正具備專業地質知識的具身智能防災 Agent。</p>
+          </div>
+        </div>
+      </div>
+      <div class="callout" style="margin-top: 24px; text-align: center;">
+        🎉 <strong>全篇完結</strong>：本簡報基於本知識庫中 5 篇先驅論文深度整合而成，可直接作為碩士論文 Proposal 或 Oral 簡報骨幹！
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Bottom Floating Navigation Bar -->
+  <nav class="bottom-nav">
+    <button class="nav-arrow" onclick="prevSlide()" title="上一頁 (←)">&#9664;</button>
+    <div style="font-family: var(--font-mono); font-size: 13px; color: var(--text-muted);" id="navCounter">Slide 1 / 10</div>
+    <button class="nav-arrow" onclick="nextSlide()" title="下一頁 (→)">&#9654;</button>
+  </nav>
+
+  <!-- Overview Modal Grid -->
+  <div class="overview-modal" id="overviewModal">
+    <div style="display: flex; justify-content: space-between; align-items: center;">
+      <h3 style="font-size: 20px; font-weight: 700;">投影片總覽 (Slide Overview)</h3>
+      <button class="btn-icon" onclick="toggleOverview()">關閉 [ESC / O]</button>
+    </div>
+    <div class="overview-grid" id="overviewGrid">
+      <!-- Dynamic populated -->
+    </div>
+  </div>
+
+  <script>
+    let currentSlide = 1;
+    const totalSlides = 10;
+    const slides = document.querySelectorAll('.slide');
+    const progressBar = document.getElementById('progressBar');
+    const slideCounter = document.getElementById('slideCounter');
+    const navCounter = document.getElementById('navCounter');
+    const overviewModal = document.getElementById('overviewModal');
+    const overviewGrid = document.getElementById('overviewGrid');
+
+    const slideTitles = [
+      "標題：地球觀測基礎模型於崩塌地偵測",
+      "背景：為什麼崩塌偵測需要 GeoFM？",
+      "演進：崩塌地 AI 偵測之四部曲演進範式",
+      "辯證：通用 VFM (SAM) vs 原生 GeoFM",
+      "剖析：Prithvi-EO-2.0 時空嵌入與波段適應",
+      "爭鳴：GFM 是主骨幹還是輔助瓶頸先驗？",
+      "突破：少樣本韌性與 SAGT 半監督階梯信任",
+      "躍遷：LandslideFM 次生災害鏈推理",
+      "缺口：現存關鍵研究缺口與技術挑戰",
+      "結論：三大核心 Takeaways 與未來展望"
+    ];
+
+    function updatePresentation() {
+      slides.forEach((slide) => {
+        const idx = parseInt(slide.getAttribute('data-index'));
+        if (idx === currentSlide) {
+          slide.classList.add('active');
+          slide.scrollTop = 0;
+        } else {
+          slide.classList.remove('active');
+        }
+      });
+
+      const progress = ((currentSlide - 1) / (totalSlides - 1)) * 100;
+      progressBar.style.width = `${Math.max(5, progress)}%`;
+      slideCounter.innerText = `${currentSlide} / ${totalSlides}`;
+      navCounter.innerText = `Slide ${currentSlide} / ${totalSlides}`;
+
+      // Update overview active state
+      document.querySelectorAll('.overview-thumb').forEach((thumb, idx) => {
+        if (idx + 1 === currentSlide) {
+          thumb.classList.add('active');
+        } else {
+          thumb.classList.remove('active');
+        }
+      });
+    }
+
+    function nextSlide() {
+      if (currentSlide < totalSlides) {
+        currentSlide++;
+        updatePresentation();
+      }
+    }
+
+    function prevSlide() {
+      if (currentSlide > 1) {
+        currentSlide--;
+        updatePresentation();
+      }
+    }
+
+    function goToSlide(n) {
+      if (n >= 1 && n <= totalSlides) {
+        currentSlide = n;
+        updatePresentation();
+        closeOverview();
+      }
+    }
+
+    function toggleOverview() {
+      overviewModal.classList.toggle('show');
+    }
+
+    function closeOverview() {
+      overviewModal.classList.remove('show');
+    }
+
+    function toggleFullscreen() {
+      if (!document.fullscreenElement) {
+        document.documentElement.requestFullscreen().catch(err => {
+          console.error(err);
+        });
+      } else {
+        if (document.exitFullscreen) {
+          document.exitFullscreen();
+        }
+      }
+    }
+
+    // Keyboard navigation
+    document.addEventListener('keydown', (e) => {
+      if (e.key === 'ArrowRight' || e.key === ' ' || e.key === 'PageDown') {
+        nextSlide();
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        prevSlide();
+      } else if (e.key === 'Home') {
+        goToSlide(1);
+      } else if (e.key === 'End') {
+        goToSlide(totalSlides);
+      } else if (e.key === 'o' || e.key === 'O') {
+        toggleOverview();
+      } else if (e.key === 'f' || e.key === 'F') {
+        toggleFullscreen();
+      } else if (e.key === 'Escape') {
+        closeOverview();
+      }
+    });
+
+    // Touch swipe support
+    let touchStartX = 0;
+    let touchEndX = 0;
+    document.addEventListener('touchstart', (e) => {
+      touchStartX = e.changedTouches[0].screenX;
+    });
+    document.addEventListener('touchend', (e) => {
+      touchEndX = e.changedTouches[0].screenX;
+      if (touchStartX - touchEndX > 50) nextSlide();
+      if (touchEndX - touchStartX > 50) prevSlide();
+    });
+
+    // Populate overview thumbnails
+    slideTitles.forEach((title, idx) => {
+      const thumb = document.createElement('div');
+      thumb.className = `overview-thumb ${idx + 1 === currentSlide ? 'active' : ''}`;
+      thumb.onclick = () => goToSlide(idx + 1);
+      thumb.innerHTML = `
+        <span class="thumb-num">SLIDE 0${idx + 1}</span>
+        <div class="thumb-title">${title}</div>
+        <div style="font-size: 11px; color: #64748b;">點擊切換</div>
+      `;
+      overviewGrid.appendChild(thumb);
+    });
+
+    // Init
+    updatePresentation();
+  </script>
+</body>
+</html>
